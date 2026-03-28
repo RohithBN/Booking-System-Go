@@ -1,0 +1,31 @@
+# Binaries for programs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, generated with go test -c
+*.test
+
+# Output of the go build command
+# For example, to ignore the "bin" directory and its contents
+/bin
+
+# Environment variables
+.env
+.env.*
+
+# Miscellaneous
+*.out
+*.log
+go.work* # Exclude go.work files as they are local configuration
+
+# IDEs and OS
+.idea/         # JetBrains IDEs (GoLand, IntelliJ)
+.vscode/       # VS Code
+.DS_Store      # macOS
+Thumbs.db      # Windows
+
+# Dep package manager
+# vendor/
