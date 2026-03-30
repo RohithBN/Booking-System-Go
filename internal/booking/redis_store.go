@@ -26,18 +26,53 @@ func sessionKey(id string) string {
 	return fmt.Sprintf("session:%s", id)
 }
 
-func (s *RedisStore) Book(b Booking) error {
+func (s *RedisStore) Book(b Booking) (string, error) {
 	res, err := s.hold(b)
 	if err != nil {
-		return err
+		return "", err
 	}
-	fmt.Println("Seat Booked: ", res)
+	fmt.Println("Seat Held succesfully , TTL 2 mins: ", res)
 	// once booking is confirmed we can update the status to "booked" and remove the session key
-	res, err = s.confirmBooking(res.ID)
-	return nil
+	return res.ID, nil
 }
 
-func (s *RedisStore) ListBookings(movieId string) []Booking { return nil }
+func (s *RedisStore) ListBookings(movieId string) []Booking {
+	ctx := context.Background()
+	pattern := fmt.Sprintf("booking:%s:*", movieId)
+	keys, err := s.rdb.Keys(ctx, pattern).Result()
+	if err != nil {
+		fmt.Println("Error fetching keys: ", err)
+		return nil
+	}
+	bookings := make([]Booking, 0)
+	for _, key := range keys {
+		val, err := s.rdb.Get(ctx, key).Result()
+		if err != nil {
+			fmt.Println("Error fetching booking data for key ", key, ": ", err)
+			continue
+		}
+		var b Booking
+		err = json.Unmarshal([]byte(val), &b)
+		if err != nil {
+			fmt.Println("Error parsing booking data for key ", key, ": ", err)
+			continue
+		}
+		bookings = append(bookings, b)
+	}
+	return bookings
+}
+
+func (s *RedisStore) ConfirmBooking(id string) (Booking, error) {
+	b,err:= s.Confirm(id)
+	if err != nil {
+		return Booking{}, err
+	}
+	fmt.Println("Booking Confirmed: ", b)
+	return b, nil
+}
+
+
+
 
 func (s *RedisStore) hold(b Booking) (Booking, error) {
 	id := uuid.New().String()
@@ -48,17 +83,18 @@ func (s *RedisStore) hold(b Booking) (Booking, error) {
 	b.Status = "held"
 	b.ExpiresAt = now.Add(defaultHoldTime)
 
-	val, err := json.Marshal(b)
+	val, err := json.Marshal(b) 
 	if err != nil {
 		return Booking{}, err
 	}
 	res := s.rdb.SetArgs(ctx, key, val, redis.SetArgs{
 		Mode: "NX",
 		TTL:  defaultHoldTime,
-	})
+	}) 
 	ok := res.Val() == "OK"
 	if !ok {
-		return Booking{}, fmt.Errorf("seat %s is already booked", b.SeatId)
+		fmt.Println("Seat held already")
+		return Booking{}, fmt.Errorf("seat %s is already held", b.SeatId)
 	}
 
 	s.rdb.Set(ctx, sessionKey(id), key, defaultHoldTime)
@@ -73,7 +109,7 @@ func (s *RedisStore) hold(b Booking) (Booking, error) {
 	}, nil
 }
 
-func (s *RedisStore) confirmBooking(id string) (Booking, error) {
+func (s *RedisStore) Confirm(id string) (Booking, error) {
 	ctx := context.Background()
 	sessionKey := sessionKey(id)
 	key, err := s.rdb.Get(ctx, sessionKey).Result()
@@ -95,6 +131,7 @@ func (s *RedisStore) confirmBooking(id string) (Booking, error) {
 		return Booking{}, fmt.Errorf("failed to serialize booking data")
 	}
 	s.rdb.Set(ctx, key, valBytes, 0) // update the booking status to "booked"
-	s.rdb.Del(ctx, sessionKey)       // remove the session key
+	// do not rmeove key for future reference to get booking details, we can set no TTL at all
+    s.rdb.Persist(ctx, sessionKey)
 	return b, nil
 }

@@ -12,10 +12,15 @@ func  NewService(store BookingStore) *Service{
 }
 
 
-func (s *Service) Book(b Booking) error {
+func (s *Service) Book(b Booking) (string, error) {
 	return s.store.Book(b)
 }
 
 func (s *Service) ListBookings(movieId string) []Booking {
 	return s.store.ListBookings(movieId)
 }
+
+func (s *Service) ConfirmBooking(id string) (Booking, error) {
+	return s.store.ConfirmBooking(id)
+}
+
